@@ -174,7 +174,7 @@ def build_qa_chain(text, collection_name="default"):
     retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
     def qa_chain(query):
-        docs = retriever.get_relevant_documents(query)
+        docs = retriever.invoke(query)
         context = "\n\n".join([doc.page_content for doc in docs])
         prompt = f"""Use the following context to answer the question.
         
