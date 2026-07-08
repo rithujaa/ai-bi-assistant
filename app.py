@@ -6,7 +6,6 @@ from pypdf import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import Chroma
-from langchain_community.chains import RetrievalQA
 from openai import OpenAI
 import plotly.express as px
 import chromadb
@@ -160,6 +159,7 @@ def load_file(uploaded_file):
 
 
 def build_qa_chain(text, collection_name="default"):
+    """Build RAG pipeline for PDF files using a fresh in-memory client"""
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     chunks = splitter.split_text(text)
     embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
@@ -171,10 +171,26 @@ def build_qa_chain(text, collection_name="default"):
         collection_name=collection_name
     )
     llm = ChatOpenAI(model="gpt-4o", temperature=0, openai_api_key=openai_api_key)
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=llm,
-        retriever=vectorstore.as_retriever(search_kwargs={"k": 4}),
-    )
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+
+    def qa_chain(query):
+        docs = retriever.get_relevant_documents(query)
+        context = "\n\n".join([doc.page_content for doc in docs])
+        prompt = f"""Use the following context to answer the question.
+        
+Context:
+{context}
+
+Question: {query}
+
+Answer clearly and concisely."""
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
+        )
+        return {"result": response.choices[0].message.content.strip()}
+
     return qa_chain
 
 
@@ -654,7 +670,7 @@ if uploaded_file is not None:
                     })
 
                 else:
-                    result = st.session_state.qa_chain.invoke({"query": question})
+                    result = st.session_state.qa_chain(question)
                     answer = result["result"]
                     st.write(answer)
 
